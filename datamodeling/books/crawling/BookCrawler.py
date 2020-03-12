@@ -23,8 +23,7 @@ class BookCrawler:
             next_button = self._get_next_button()
             if not next_button:
                 break
-            next_button.click()
-
+            self.driver.execute_script('arguments[0].click();', next_button)
         self.driver.close()
 
     def _get_item(self):
@@ -33,7 +32,7 @@ class BookCrawler:
         book_list_selector = '.prd_list_area .prd_list_type1 > li'
         book_list_soup = soup.select(book_list_selector)
 
-        for book_soup in book_list_soup:
+        for idx, book_soup in enumerate(book_list_soup):
             title = book_soup.select_one('.title').text.strip()
             author = book_soup.select_one('.author').text.strip()
             publisher = book_soup.select('.publication')[0].text.strip()
@@ -44,14 +43,17 @@ class BookCrawler:
 
             print((title, author, publisher, pubdate, price, headline, rating))
 
+            link_selector = '.prd_list_area ul.prd_list_type1 > li:nth-child({:}) .title a'.format(str(6 * (idx + 1)))
+            self._to_item_page(link_selector)
+
     def _get_next_button(self):
         next_button_selector = '.list_button_wrap .list_paging a.btn_next'
         next_button = self.driver.find_elements_by_css_selector(next_button_selector)
         return next_button[0] if len(next_button) else None
 
-    def _drop_by_child(self):
+    def _to_item_page(self, selector):
         parent_handler = self.driver.current_window_handle
-        self.driver.find_element_by_xpath('//*[@id="showcaseNew"]/div[4]/ul/li[1]/div/div[1]/div[2]/div[1]/a/strong').click()
+        self.driver.find_element_by_css_selector(selector).click()
         WebDriverWait(self.driver, 10).until(EC.number_of_windows_to_be(2))
 
         all_handler = self.driver.window_handles
@@ -60,10 +62,24 @@ class BookCrawler:
                 child_handler = handler
 
         self.driver.switch_to.window(child_handler)
+
+        item_page = self.driver.page_source
+        item_soup = BeautifulSoup(item_page, 'html.parser')
+        isbn_13 = isbn_10 = ''
+        isbn_list = item_soup.select('.box_detail_content .table_simple2.table_opened tbody tr:nth-child(1) td span')
+        for isbn in isbn_list:
+            isbn = isbn.text.strip()
+            if len(isbn) == 13:
+                isbn_13 = isbn
+            elif len(isbn) == 10:
+                isbn_10 = isbn
+        page = item_soup.select_one('.box_detail_content .table_simple2.table_opened tbody tr:nth-child(2) td').text.strip()
+        description = item_soup.select_one('.box_detail_article').text.strip()
+
+        print((isbn_13, isbn_10, page, description))
         self.driver.close()
 
         self.driver.switch_to.window(parent_handler)
-        self.driver.close()
 
 
 if __name__ == '__main__':
