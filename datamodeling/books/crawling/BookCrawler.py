@@ -1,46 +1,71 @@
 from bs4 import BeautifulSoup
 from selenium import webdriver
-import time
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 
 class BookCrawler:
     def __init__(self):
         driver_path = './driver/chromedriver'
-        self.driver = webdriver.Chrome(driver_path)
+        options = webdriver.ChromeOptions()
+        options.add_argument('headless')
+        options.add_argument('window-size=1920x1080')
+        options.add_argument("disable-gpu")
+        self.driver = webdriver.Chrome(driver_path, options=options)
 
-    def crawl(self, num_pages):
-        books = []
-        base_url = 'https://www.aladin.co.kr/shop/common/wnew.aspx?NewType=SpecialNew&BranchType=1&CID=1'
-        for page in range(num_pages):
-            url = base_url + '&page=' + str(page)
-            books += (self._get_book_list(url))
+    def crawl(self):
+        base_url = 'http://www.kyobobook.co.kr/newproduct/newProductList.laf'
+        self.driver.get(base_url)
 
-        for (title, url) in books:
-            self.driver.get(url)
-            self.driver.find_element_by_class_name('pContent').is_displayed()
-
-            page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
-            information = soup.select('.Ere_prod_mconts_box')
-            for info in information:
-                print(info.select_one('.Ere_prod_mconts_LS').text.strip())
+        while True:
+            self._get_item()
+            next_button = self._get_next_button()
+            if not next_button:
+                break
+            next_button.click()
 
         self.driver.close()
 
-    def _get_book_list(self, url):
-        book_list = []
-        self.driver.get(url)
+    def _get_item(self):
         page_source = self.driver.page_source
         soup = BeautifulSoup(page_source, 'html.parser')
-        books = soup.select('#Myform .ss_book_box')
-        for book in books:
-            title_soup = book.select_one('.ss_book_list:nth-child(1) li a.bo3')
-            title = title_soup.text.strip()
-            book_url = title_soup['href']
-            book_list.append((title, book_url))
-        return book_list
+        book_list_selector = '.prd_list_area .prd_list_type1 > li'
+        book_list_soup = soup.select(book_list_selector)
+
+        for book_soup in book_list_soup:
+            title = book_soup.select_one('.title').text.strip()
+            author = book_soup.select_one('.author').text.strip()
+            publisher = book_soup.select('.publication')[0].text.strip()
+            pubdate = book_soup.select('.publication')[1].text.strip()
+            price = book_soup.select_one('.sell_price').text.strip()
+            headline = book_soup.select_one('.info').text.strip()
+            rating = book_soup.select_one('.score strong').text.strip()
+
+            print((title, author, publisher, pubdate, price, headline, rating))
+
+    def _get_next_button(self):
+        next_button_selector = '.list_button_wrap .list_paging a.btn_next'
+        next_button = self.driver.find_elements_by_css_selector(next_button_selector)
+        return next_button[0] if len(next_button) else None
+
+    def _drop_by_child(self):
+        parent_handler = self.driver.current_window_handle
+        self.driver.find_element_by_xpath('//*[@id="showcaseNew"]/div[4]/ul/li[1]/div/div[1]/div[2]/div[1]/a/strong').click()
+        WebDriverWait(self.driver, 10).until(EC.number_of_windows_to_be(2))
+
+        all_handler = self.driver.window_handles
+        for handler in all_handler:
+            if handler != parent_handler:
+                child_handler = handler
+
+        self.driver.switch_to.window(child_handler)
+        self.driver.close()
+
+        self.driver.switch_to.window(parent_handler)
+        self.driver.close()
 
 
 if __name__ == '__main__':
     book_crawler = BookCrawler()
-    book_crawler.crawl(10)
+    book_crawler.crawl()
