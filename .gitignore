@@ -3,6 +3,7 @@ venv/
 migrations/
 __pycache__/
 driver/
+data/
 .DS_Store
 secrets.json
 db.sqlite3

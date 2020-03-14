@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
 
 
 class BookCrawler:
@@ -13,20 +14,25 @@ class BookCrawler:
         options.add_argument('window-size=1920x1080')
         options.add_argument("disable-gpu")
         self.driver = webdriver.Chrome(driver_path, options=options)
+        self.df = pd.DataFrame()
 
     def crawl(self):
         base_url = 'http://www.kyobobook.co.kr/newproduct/newProductList.laf'
         self.driver.get(base_url)
-
+        num_page = 1
         while True:
+            print('Start Page No. {:02d}'.format(num_page))
             self._get_item()
+            num_page += 1
             next_button = self._get_next_button()
             if not next_button:
                 break
             self.driver.execute_script('arguments[0].click();', next_button)
         self.driver.close()
+        self.df.to_csv('./data/books.csv', encoding='utf-8', index=False)
 
     def _get_item(self):
+        books = []
         page_source = self.driver.page_source
         soup = BeautifulSoup(page_source, 'html.parser')
         book_list_selector = '.prd_list_area .prd_list_type1 > li'
@@ -41,10 +47,17 @@ class BookCrawler:
             headline = book_soup.select_one('.info').text.strip()
             rating = book_soup.select_one('.score strong').text.strip()
 
-            print((title, author, publisher, pubdate, price, headline, rating))
+            row = (title, author, publisher, pubdate, price, headline, rating)
 
             link_selector = '.prd_list_area ul.prd_list_type1 > li:nth-child({:}) .title a'.format(str(6 * (idx + 1)))
-            self._to_item_page(link_selector)
+            row += (self._to_item_page(link_selector))
+            books.append(row)
+
+            if idx % 5 == 0:
+                print('\tbook data of index {:02d}'.format(idx))
+
+        self.df = self.df.append(pd.DataFrame(books, columns=['title', 'author', 'publisher', 'pubdate', 'price', 'headline', 'rating', 'isbn_13', 'isbn_10', 'page', 'description']))
+        self.df.reset_index(drop=True, inplace=True)
 
     def _get_next_button(self):
         next_button_selector = '.list_button_wrap .list_paging a.btn_next'
@@ -75,11 +88,9 @@ class BookCrawler:
                 isbn_10 = isbn
         page = item_soup.select_one('.box_detail_content .table_simple2.table_opened tbody tr:nth-child(2) td').text.strip()
         description = item_soup.select_one('.box_detail_article').text.strip()
-
-        print((isbn_13, isbn_10, page, description))
         self.driver.close()
-
         self.driver.switch_to.window(parent_handler)
+        return isbn_13, isbn_10, page, description
 
 
 if __name__ == '__main__':
